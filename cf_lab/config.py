@@ -43,11 +43,11 @@ class TaskSpec:
 class TrainingHyperparams:
     """Shared hyperparameters for every fine-tuning phase."""
 
-    epochs: int = 1
-    batch_size: int = 16
-    learning_rate: float = 2e-5
-    warmup_steps: int = 50
-    eval_every_steps: int = 20
+    epochs: int = 2
+    batch_size: int = 32
+    learning_rate: float = 1e-4
+    warmup_steps: int = 5
+    eval_every_steps: int = 50
     seed: int = 42
 
 
@@ -68,15 +68,15 @@ class ExperimentConfig:
 
     tasks: list = field(
         default_factory=lambda: [
-            TaskSpec(name="IMDb", dataset="stanfordnlp/imdb",
-                     max_train_samples=4000, max_eval_samples=800),
-            TaskSpec(name="SST-2", dataset="nyu-mll/glue", config_name="sst2",
-                     text_column="sentence", max_train_samples=4000, max_eval_samples=872),
-            TaskSpec(name="Amazon", dataset="fancyzhx/amazon_polarity",
-                     max_train_samples=4000, max_eval_samples=800),
+            TaskSpec(name="IMDb", dataset="stanfordnlp/imdb", num_labels=2,
+                     max_train_samples=1000, max_eval_samples=400),
+            TaskSpec(name="AG News", dataset="fancyzhx/ag_news", num_labels=4,
+                     max_train_samples=1000, max_eval_samples=400),
+            TaskSpec(name="DBpedia", dataset="fancyzhx/dbpedia_14", num_labels=14,
+                     text_column="content", max_train_samples=1000, max_eval_samples=400),
         ]
     )
-    model_name: str = "distilbert-base-uncased"
+    model_name: str = "google/bert_uncased_L-4_H-256_A-4"
     training: TrainingHyperparams = field(default_factory=TrainingHyperparams)
     mitigation: MitigationConfig = field(default_factory=MitigationConfig)
     output_dir: str = "experiments"
@@ -89,11 +89,7 @@ class ExperimentConfig:
 
     def resolved_training(self) -> TrainingHyperparams:
         """Return hyperparams with CPU-adaptive sizes for slow machines."""
-        hp = self.training
-        device = self.resolve_device()
-        if device == "cpu" and hp.batch_size > 8:
-            hp.batch_size = 8
-        return hp
+        return self.training
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -105,7 +101,7 @@ def default_config() -> ExperimentConfig:
     mem = _gpu_memory_gb()
     if mem is not None and mem < 3.0:
         # Tiny GPU: shrink model and data so experiments still fit.
-        cfg.model_name = "distilbert-base-uncased"
+        cfg.model_name = "google/bert_uncased_L-4_H-256_A-4"
         for task in cfg.tasks:
             task.max_train_samples = min(task.max_train_samples, 1500)
     return cfg

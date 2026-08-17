@@ -40,15 +40,24 @@ class TorchDataset(Dataset):
 
 
 def load_task(spec: TaskSpec, tokenizer: PreTrainedTokenizerBase) -> TaskData:
-    """Load, subsample and tokenize one task's train/validation splits."""
+    """Load, subsample and tokenize one task's train/validation splits.
+
+    Datasets are shuffled before subsampling: several HF datasets (e.g.
+    stanfordnlp/imdb) are sorted by label, so slicing the head would give a
+    degenerate single-class subset.
+    """
     if spec.config_name:
         ds = load_dataset(spec.dataset, spec.config_name)
     else:
         ds = load_dataset(spec.dataset)
 
-    train = ds["train"].select(range(min(spec.max_train_samples, len(ds["train"]))))
+    train = ds["train"].shuffle(seed=42).select(
+        range(min(spec.max_train_samples, len(ds["train"])))
+    )
     split_key = "validation" if "validation" in ds else "test"
-    eval_ds = ds[split_key].select(range(min(spec.max_eval_samples, len(ds[split_key]))))
+    eval_ds = ds[split_key].shuffle(seed=42).select(
+        range(min(spec.max_eval_samples, len(ds[split_key])))
+    )
 
     def tokenize(batch):
         texts = batch[spec.text_column]

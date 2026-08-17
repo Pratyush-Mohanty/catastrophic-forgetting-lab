@@ -71,9 +71,9 @@ st.sidebar.markdown("Experiment configuration")
 
 model_name = st.sidebar.selectbox(
     "Model",
-    ["distilbert-base-uncased", "bert-base-uncased", "google/bert_uncased_L-2_H-128_A-2"],
+    ["google/bert_uncased_L-4_H-256_A-4", "distilbert-base-uncased", "bert-base-uncased"],
     index=0,
-    help="Smaller = faster on CPU. distilbert is recommended.",
+    help="L-4 H-256 is fast on CPU and recommended. distilbert is slower but stronger.",
 )
 
 mitigation = st.sidebar.selectbox(
@@ -107,9 +107,9 @@ run_button = st.sidebar.button("Run experiment", type="primary")
 
 st.title("Studying Catastrophic Forgetting in LLMs")
 st.markdown(
-    f"Fine-tune **{model_name}** sequentially on IMDb → SST-2 → Amazon "
-    f"(all binary sentiment). Watch what happens to earlier tasks. "
-    f"Strategy: **{mitigation}**."
+    f"Fine-tune **{model_name}** sequentially on IMDb → AG News → DBpedia "
+    f"(distinct tasks, distinct label spaces, shared encoder + per-task heads). "
+    f"Watch what happens to earlier tasks. Strategy: **{mitigation}**."
 )
 
 tab_run, tab_compare, tab_theory, tab_saved = st.tabs(
@@ -179,6 +179,10 @@ with tab_run:
         st.dataframe(result.summary().round(3))
 
 with tab_compare:
+    if not results_cache:
+        saved = list_results()
+        for p in saved:
+            results_cache.append(load_result(p))
     if results_cache:
         st.subheader("Retention on the first task vs mitigation")
         df = compare_runs(results_cache, task_index=0)

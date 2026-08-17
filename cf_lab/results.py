@@ -14,7 +14,7 @@ from .training import StepLog
 def run_id(cfg: ExperimentConfig) -> str:
     """Stable, human-readable run id derived from the config."""
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    tasks = "+".join(t.spec.name.replace(" ", "").lower() for t in cfg.tasks)
+    tasks = "+".join(t.name.replace(" ", "").lower() for t in cfg.tasks)
     return f"{cfg.mitigation.kind}_{cfg.model_name.split('/')[-1]}_{tasks}_{stamp}"
 
 

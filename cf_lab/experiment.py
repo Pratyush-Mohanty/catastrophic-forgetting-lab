@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from . import metrics
 from .config import ExperimentConfig
 from .data import TaskData, load_task
-from .model import load_model_and_tokenizer
+from .model import load_continual_model
 from .training import (
     ReplayBuffer,
     fine_tune_phase,
@@ -64,26 +64,25 @@ class ExperimentResult:
 
 
 def run_experiment(cfg: ExperimentConfig, progress_cb=None) -> ExperimentResult:
-    """Sequentially fine-tune a model on each task and log accuracies.
+    """Sequentially fine-tune a shared model on each task and log accuracies.
 
-    Mirrors the classic catastrophic-forgetting experiment: train on task A,
-    then task B, then task C, measuring accuracy on *every* seen task after
-    every phase. Mitigations (EWC / replay) modify training after the first
-    task to reduce forgetting.
+    Tasks have distinct label spaces and separate output heads (task-incremental
+    continual learning). After every phase we evaluate *every* task with its own
+    head. Accuracy loss on earlier tasks is catastrophic forgetting.
 
     progress_cb: optional callable(phase_index, phase_name, step, total_steps).
     """
     t0 = time.time()
     device = cfg.resolve_device()
-    hp = cfg.resolved_training()
+    hp = cfg.training
     mit = cfg.mitigation
 
     torch.manual_seed(hp.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(hp.seed)
 
-    num_labels = cfg.tasks[0].num_labels
-    model, tokenizer = load_model_and_tokenizer(cfg.model_name, num_labels, device)
+    head_sizes = [t.num_labels for t in cfg.tasks]
+    model, tokenizer = load_continual_model(cfg.model_name, head_sizes, device)
 
     task_data: list[TaskData] = [load_task(spec, tokenizer) for spec in cfg.tasks]
     names = [td.spec.name for td in task_data]
@@ -99,14 +98,16 @@ def run_experiment(cfg: ExperimentConfig, progress_cb=None) -> ExperimentResult:
         accs = {}
         model.eval()
         with torch.no_grad():
-            for td in task_data:
+            for head_idx, td in enumerate(task_data):
+                hidx = torch.tensor([head_idx], device=device, dtype=torch.long)
                 dataloader = DataLoader(td.eval, batch_size=hp.batch_size)
                 correct = total = 0
                 for batch in dataloader:
                     logits = model(
                         batch["input_ids"].to(device),
-                        attention_mask=batch["attention_mask"].to(device),
-                    ).logits
+                        batch["attention_mask"].to(device),
+                        hidx.expand(batch["input_ids"].size(0)),
+                    )
                     correct += (logits.argmax(-1) == batch["labels"].to(device)).sum().item()
                     total += logits.size(0)
                 accs[td.spec.name] = correct / max(total, 1)
@@ -142,9 +143,9 @@ def run_experiment(cfg: ExperimentConfig, progress_cb=None) -> ExperimentResult:
         )
         step_logs.extend(logs)
 
-        if mit.kind == "replay" and phase_idx == 0:
+        if mit.kind == "replay":
             for batch in dataloader:
-                replay_buffer.add(batch, mit.replay_buffer_size)
+                replay_buffer.add(batch, phase_idx, mit.replay_buffer_size)
                 if len(replay_buffer.items) >= mit.replay_buffer_size:
                     break
 

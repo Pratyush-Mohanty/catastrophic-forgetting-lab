@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import math
 import random
 from dataclasses import dataclass, field
 from typing import Callable
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
 from .config import MitigationConfig, TrainingHyperparams
-from .model import compute_fisher
+from .model import compute_fisher, model_params_state
 
 
 @dataclass
@@ -55,28 +55,24 @@ def _build_ewc_penalty(
 
 
 class ReplayBuffer:
-    """Fixed-size exemplar memory of inputs from earlier tasks."""
+    """Fixed-size exemplar memory of (input, label, head) from earlier tasks."""
 
     def __init__(self, size: int):
         self.size = size
         self.items: list[dict] = []
 
-    def add(self, batch: dict, max_add: int):
+    def add(self, batch: dict, head_index: int, max_add: int):
         for i in range(len(batch["input_ids"])):
+            item = {
+                "input_ids": batch["input_ids"][i],
+                "attention_mask": batch["attention_mask"][i],
+                "labels": batch["labels"][i],
+                "head_index": torch.tensor(head_index, dtype=torch.long),
+            }
             if len(self.items) < self.size:
-                self.items.append(
-                    {
-                        "input_ids": batch["input_ids"][i],
-                        "attention_mask": batch["attention_mask"][i],
-                        "labels": batch["labels"][i],
-                    }
-                )
+                self.items.append(item)
             else:
-                self.items[random.randrange(self.size)] = {
-                    "input_ids": batch["input_ids"][i],
-                    "attention_mask": batch["attention_mask"][i],
-                    "labels": batch["labels"][i],
-                }
+                self.items[random.randrange(self.size)] = item
         self.items = self.items[:max_add]
 
     def sample(self, n: int) -> dict:
@@ -85,6 +81,7 @@ class ReplayBuffer:
             "input_ids": torch.stack([c["input_ids"] for c in chosen]),
             "attention_mask": torch.stack([c["attention_mask"] for c in chosen]),
             "labels": torch.stack([c["labels"] for c in chosen]),
+            "head_index": torch.stack([c["head_index"] for c in chosen]),
         }
 
 
@@ -101,7 +98,7 @@ def _mix_replay(
     mem = buffer.sample(k)
     idx = random.sample(range(n), k)
     merged = dict(batch)
-    for key in ("input_ids", "attention_mask", "labels"):
+    for key in ("input_ids", "attention_mask", "labels", "head_index"):
         src = mem[key]
         merged[key] = batch[key].clone()
         for j, i in enumerate(idx):
@@ -126,25 +123,28 @@ def fine_tune_phase(
     replay_buffer: ReplayBuffer | None,
     progress_cb=None,
 ) -> tuple[list[StepLog], int, list[EWCState]]:
-    """Train one phase. Returns (step_logs, final_step, updated ewc_state)."""
+    """Train one phase on one task. Returns (step_logs, final_step, ewc_list)."""
     logs: list[StepLog] = []
     step = step_start
     total_steps = len(dataloader) * num_epochs
+    head_index = torch.tensor([task_index], device=device, dtype=torch.long)
     optimizer.zero_grad(set_to_none=True)
     model.train()
 
     for epoch in range(num_epochs):
         running_loss, running_correct, running_total = 0.0, 0, 0
         for batch in dataloader:
+            batch["head_index"] = head_index.expand(batch["input_ids"].size(0))
             if mitigation.kind == "replay" and replay_buffer is not None:
                 batch = _mix_replay(batch, replay_buffer, mitigation.replay_ratio)
 
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             labels = batch["labels"].to(device)
+            heads = batch["head_index"].to(device)
 
-            out = model(input_ids, attention_mask=attention_mask, labels=labels)
-            loss = out.loss
+            logits = model(input_ids, attention_mask, heads)
+            loss = F.cross_entropy(logits, labels)
             if mitigation.kind == "ewc":
                 loss = loss + _build_ewc_penalty(
                     model, ewc_list, mitigation.ewc_lambda, device
@@ -159,7 +159,7 @@ def fine_tune_phase(
                 progress_cb(task_index, phase_name, step - step_start, total_steps)
 
             running_loss += loss.item() * input_ids.size(0)
-            running_correct += (out.logits.argmax(-1) == labels).sum().item()
+            running_correct += (logits.argmax(-1) == labels).sum().item()
             running_total += input_ids.size(0)
             step += 1
 
@@ -194,18 +194,14 @@ def fine_tune_phase(
         model.train()
 
     if mitigation.kind == "ewc":
-        fisher = compute_fisher(model, dataloader, mitigation.ewc_fisher_samples, device)
+        fisher = compute_fisher(
+            model, dataloader, mitigation.ewc_fisher_samples, device, task_index
+        )
         ewc_list = list(ewc_list)
-        ewc_list.append(EWCState(fisher=fisher, anchor=_anchor_state(model)))
+        ewc_list.append(
+            EWCState(fisher=fisher, anchor=model_params_state(model))
+        )
     return logs, step, ewc_list
-
-
-def _anchor_state(model: nn.Module) -> dict[str, torch.Tensor]:
-    return {
-        name: p.detach().clone()
-        for name, p in model.named_parameters()
-        if p.requires_grad
-    }
 
 
 def make_optimizer_and_scheduler(
