@@ -145,6 +145,8 @@ Retention = final accuracy ÷ peak accuracy. **1.00 = nothing forgotten.**
 
 ![retention comparison](docs/images/retention_comparison.png)
 
+![retention table](docs/images/retention_table.png)
+
 | Strategy | IMDb retention | AG News retention | DBpedia retention |
 |---|---|---|---|
 | Baseline | 0.93 | 0.98 | 1.00 |
@@ -167,6 +169,14 @@ slopes downward where EWC and replay hold it up:
 
 ## What we built (architecture)
 
+![architecture](docs/images/architecture.png)
+
+The model is a shared BERT encoder with **one linear classification head per
+task**. Training phase N updates the shared weights *and* head N. Because every
+task shares the same backbone, the gradient updates for later tasks overwrite the
+features that earlier heads depend on — that interference is catastrophic
+forgetting.
+
 ```
 catastrophic-forgetting-lab/
 ├── cf_lab/                      # core Python package
@@ -183,6 +193,7 @@ catastrophic-forgetting-lab/
 ├── experiments/                 # saved JSON results (already populated)
 ├── docs/images/                 # README figures
 └── generate_images.py           # regenerates the README figures
+└── architecture_diagram.py      # regenerates the architecture diagram
 ```
 
 **Key design decisions (and the bugs we hit while validating):**
@@ -253,7 +264,8 @@ heatmap to PNG.
 ### 4. Regenerate the README figures
 
 ```powershell
-python generate_images.py
+python generate_images.py      # results figures (requires saved experiments)
+python architecture_diagram.py # architecture diagram
 ```
 
 ---
