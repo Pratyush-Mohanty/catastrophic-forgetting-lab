@@ -1,0 +1,183 @@
+{
+  "config": {
+    "tasks": [
+      {
+        "name": "IMDb",
+        "dataset": "stanfordnlp/imdb",
+        "config_name": "",
+        "text_column": "text",
+        "label_column": "label",
+        "num_labels": 2,
+        "max_train_samples": 1000,
+        "max_eval_samples": 400,
+        "max_length": 128
+      },
+      {
+        "name": "AG News",
+        "dataset": "fancyzhx/ag_news",
+        "config_name": "",
+        "text_column": "text",
+        "label_column": "label",
+        "num_labels": 4,
+        "max_train_samples": 1000,
+        "max_eval_samples": 400,
+        "max_length": 128
+      },
+      {
+        "name": "DBpedia",
+        "dataset": "fancyzhx/dbpedia_14",
+        "config_name": "",
+        "text_column": "content",
+        "label_column": "label",
+        "num_labels": 14,
+        "max_train_samples": 1000,
+        "max_eval_samples": 400,
+        "max_length": 128
+      }
+    ],
+    "model_name": "google/bert_uncased_L-4_H-256_A-4",
+    "training": {
+      "epochs": 2,
+      "batch_size": 32,
+      "learning_rate": 0.0001,
+      "warmup_steps": 5,
+      "eval_every_steps": 50,
+      "seed": 42
+    },
+    "mitigation": {
+      "kind": "baseline",
+      "ewc_lambda": 500.0,
+      "ewc_fisher_samples": 200,
+      "replay_buffer_size": 300,
+      "replay_ratio": 0.5
+    },
+    "output_dir": "experiments",
+    "device": "cpu"
+  },
+  "task_names": [
+    "IMDb",
+    "AG News",
+    "DBpedia"
+  ],
+  "steps": [
+    {
+      "step": 0,
+      "phase": "init",
+      "loss": NaN,
+      "lr": 0.0,
+      "train_acc": 0.0,
+      "task_accs": {
+        "IMDb": 0.4925,
+        "AG News": 0.2675,
+        "DBpedia": 0.0825
+      }
+    },
+    {
+      "step": 50,
+      "phase": "IMDb",
+      "loss": 0.6289101839065552,
+      "lr": 2.3728813559322036e-05,
+      "train_acc": 0.6631944444444444,
+      "task_accs": {
+        "IMDb": 0.6375,
+        "AG News": 0.27,
+        "DBpedia": 0.0175
+      }
+    },
+    {
+      "step": 64,
+      "phase": "IMDb",
+      "loss": 0.6144056196482677,
+      "lr": 0.0,
+      "train_acc": 0.6910377358490566,
+      "task_accs": {
+        "IMDb": 0.6475,
+        "AG News": 0.27,
+        "DBpedia": 0.0125
+      }
+    },
+    {
+      "step": 100,
+      "phase": "AG News",
+      "loss": 0.6129755675792694,
+      "lr": 4.745762711864407e-05,
+      "train_acc": 0.828125,
+      "task_accs": {
+        "IMDb": 0.635,
+        "AG News": 0.8,
+        "DBpedia": 0.0325
+      }
+    },
+    {
+      "step": 128,
+      "phase": "AG News",
+      "loss": 0.5429553898102647,
+      "lr": 0.0,
+      "train_acc": 0.8555045871559633,
+      "task_accs": {
+        "IMDb": 0.6275,
+        "AG News": 0.805,
+        "DBpedia": 0.05
+      }
+    },
+    {
+      "step": 150,
+      "phase": "DBpedia",
+      "loss": 2.3014520731839267,
+      "lr": 7.11864406779661e-05,
+      "train_acc": 0.3849431818181818,
+      "task_accs": {
+        "IMDb": 0.5825,
+        "AG News": 0.8225,
+        "DBpedia": 0.7325
+      }
+    },
+    {
+      "step": 192,
+      "phase": "DBpedia",
+      "loss": 1.3238979597091676,
+      "lr": 0.0,
+      "train_acc": 0.909,
+      "task_accs": {
+        "IMDb": 0.6,
+        "AG News": 0.81,
+        "DBpedia": 0.905
+      }
+    }
+  ],
+  "acc_matrix": [
+    [
+      0.6475,
+      0.27,
+      0.0125
+    ],
+    [
+      0.6275,
+      0.805,
+      0.05
+    ],
+    [
+      0.6,
+      0.81,
+      0.905
+    ]
+  ],
+  "peak_matrix": [
+    [
+      0.6475,
+      0.27,
+      0.0175
+    ],
+    [
+      0.6475,
+      0.805,
+      0.05
+    ],
+    [
+      0.6475,
+      0.8225,
+      0.905
+    ]
+  ],
+  "runtime_seconds": 677.5559425354004
+}

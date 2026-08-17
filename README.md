@@ -4,7 +4,7 @@
 > real language model** — and to measure how strategies like *Elastic Weight
 > Consolidation (EWC)* and *Experience Replay* slow it down.
 
-![baseline curves](docs/images/curves_baseline.png)
+![baseline curves](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/curves_baseline.png)
 
 ---
 
@@ -121,31 +121,31 @@ the *next* task starts training.
 
 **Baseline** — the oldest task's accuracy erodes with each new phase:
 
-![baseline](docs/images/curves_baseline.png)
+![baseline](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/curves_baseline.png)
 
 **EWC** — the Fisher penalty keeps the shared weights anchored; old tasks decay
 much less:
 
-![ewc](docs/images/curves_ewc.png)
+![ewc](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/curves_ewc.png)
 
 **Replay** — re-training on remembered examples holds every task essentially flat:
 
-![replay](docs/images/curves_replay.png)
+![replay](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/curves_replay.png)
 
 ### Accuracy matrices
 
 Rows = what we just trained on; columns = what we evaluated. The off-diagonal
 drops in the baseline matrix are the catastrophe.
 
-![confusion matrices](docs/images/confusion_matrices.png)
+![confusion matrices](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/confusion_matrices.png)
 
 ### Retention comparison
 
 Retention = final accuracy ÷ peak accuracy. **1.00 = nothing forgotten.**
 
-![retention comparison](docs/images/retention_comparison.png)
+![retention comparison](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/retention_comparison.png)
 
-![retention table](docs/images/retention_table.png)
+![retention table](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/retention_table.png)
 
 | Strategy | IMDb retention | AG News retention | DBpedia retention |
 |---|---|---|---|
@@ -163,13 +163,13 @@ Retention = final accuracy ÷ peak accuracy. **1.00 = nothing forgotten.**
 The first task's accuracy as later tasks are trained — the baseline curve visibly
 slopes downward where EWC and replay hold it up:
 
-![task1 across strategies](docs/images/task1_across_strategies.png)
+![task1 across strategies](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/task1_across_strategies.png)
 
 ---
 
 ## What we built (architecture)
 
-![architecture](docs/images/architecture.png)
+![architecture](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/architecture.png)
 
 The model is a shared BERT encoder with **one linear classification head per
 task**. Training phase N updates the shared weights *and* head N. Because every

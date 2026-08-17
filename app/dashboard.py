@@ -18,14 +18,30 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from cf_lab.config import default_config, detect_device
-from cf_lab.experiment import ExperimentResult, run_experiment
-from cf_lab.plotting import (
-    task_accuracy_curves,
-    confusion_heatmap,
-    compare_runs,
-)
-from cf_lab.results import list_results, load_result, save_result
+try:
+    import torch  # noqa: F401  (probe for a working ML environment)
+    import transformers  # noqa: F401
+    import datasets  # noqa: F401
+
+    from cf_lab.config import default_config, detect_device
+    from cf_lab.experiment import ExperimentResult, run_experiment
+    from cf_lab.plotting import (
+        task_accuracy_curves,
+        confusion_heatmap,
+        compare_runs,
+    )
+    from cf_lab.results import list_results, load_result, save_result
+except Exception as exc:  # pragma: no cover - friendly failure path
+    st.set_page_config(page_title="Catastrophic Forgetting Lab", layout="wide")
+    st.error(
+        "**The app could not start: dependencies are missing or broken.**\n\n"
+        f"`{type(exc).__name__}: {exc}`\n\n"
+        "This usually happens when the app is launched with the **wrong Python** "
+        "(e.g. the system Python instead of the project venv). Fix it with:\n\n"
+        "```\ncd catastrophic-forgetting-lab\npy -3.10 -m venv .venv\n.venv\\Scripts\\python -m pip install -r requirements.txt\n.venv\\Scripts\\python -m streamlit run app/dashboard.py\n```\n\n"
+        "or simply double-click **`run_dashboard.bat`**."
+    )
+    st.stop()
 
 st.set_page_config(page_title="Catastrophic Forgetting Lab", layout="wide")
 

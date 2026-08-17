@@ -5,6 +5,18 @@ your fine-tuned model "forgets" — and how EWC and Experience Replay fight back
 
 ---
 
+> **How to publish this on Medium:** open `MEDIUM.md`, copy the whole text, and
+> paste it into the Medium editor. Medium ignores local image paths, so **after
+> pasting, upload the images** from `docs/images/` in this order:
+> `architecture.png` (sec 3) → `confusion_matrices.png` (6.1) →
+> `curves_baseline.png` (6.2) → `curves_ewc.png` (6.2) → `curves_replay.png`
+> (6.2) → `retention_comparison.png` + `retention_table.png` (6.3) →
+> `task1_across_strategies.png` (6.4). Click each `![...]` placeholder's image
+> icon and replace it with the uploaded image. (The GitHub raw URLs below are
+> there so previews render everywhere; Medium itself needs the uploaded files.)
+
+---
+
 > **TL;DR** I built a complete experiment platform that fine-tunes a transformer
 > language model on three tasks in sequence (IMDb → AG News → DBpedia) and
 > measures what happens to earlier tasks. The result? The model genuinely loses
@@ -88,7 +100,7 @@ transfer, because all three tasks were the same skill with different data.
 
 ## 3. The architecture
 
-![architecture](docs/images/architecture.png)
+![architecture](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/architecture.png)
 
 - A shared **BERT encoder** (L-4 H-256, ~11M params — small enough to fine-tune on a CPU in minutes).
 - **One linear head per task** (`2 / 4 / 14` classes).
@@ -184,7 +196,7 @@ per task, 2 epochs, batch 32, LR 1e-4, CPU.
 
 Rows are what we trained on; columns are what we evaluated.
 
-![confusion matrices](docs/images/confusion_matrices.png)
+![confusion matrices](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/confusion_matrices.png)
 
 The off-diagonal story: **IMDb peaked at 0.648 and finished at 0.600** after the
 other tasks were learned — a real, measurable loss. AG News held better (its
@@ -197,23 +209,23 @@ when each new task starts. Watch the older tasks' lines slope downward.
 
 **Baseline** — the oldest task's accuracy erodes with every new phase:
 
-![baseline curves](docs/images/curves_baseline.png)
+![baseline curves](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/curves_baseline.png)
 
 **EWC** — the Fisher anchor keeps old-task accuracy much flatter:
 
-![ewc curves](docs/images/curves_ewc.png)
+![ewc curves](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/curves_ewc.png)
 
 **Replay** — re-training on remembered examples holds every task essentially flat:
 
-![replay curves](docs/images/curves_replay.png)
+![replay curves](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/curves_replay.png)
 
 ### 6.3 Retention summary
 
 Retention = final accuracy ÷ peak accuracy. **1.00 = nothing forgotten.**
 
-![retention comparison](docs/images/retention_comparison.png)
+![retention comparison](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/retention_comparison.png)
 
-![retention table](docs/images/retention_table.png)
+![retention table](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/retention_table.png)
 
 | Strategy | IMDb | AG News | DBpedia |
 |---|---|---|---|
@@ -223,7 +235,7 @@ Retention = final accuracy ÷ peak accuracy. **1.00 = nothing forgotten.**
 
 ### 6.4 The money plot — task-1 accuracy while everything else is learned
 
-![task1 across strategies](docs/images/task1_across_strategies.png)
+![task1 across strategies](https://raw.githubusercontent.com/Pratyush-Mohanty/catastrophic-forgetting-lab/master/docs/images/docs/images/task1_across_strategies.png)
 
 The baseline curve visibly slopes down; EWC and replay hold the line.
 
