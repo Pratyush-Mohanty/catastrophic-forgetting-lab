@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catastrophic Forgetting Lab — Experiment Report</title>
+<style>
+  :root{--accent:#2c3e50;--accent2:#16a085;--code-bg:#f6f8fa;--border:#e1e4e8;}
+  *{box-sizing:border-box;}
+  body{font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;color:#24292f;
+       line-height:1.65;margin:0;background:#f5f6f7;}
+  .page{max-width:900px;margin:0 auto;padding:48px 32px;background:#fff;
+        box-shadow:0 0 24px rgba(0,0,0,.08);min-height:100vh;}
+  h1{font-size:2.1rem;color:var(--accent);border-bottom:3px solid var(--accent2);
+     padding-bottom:10px;margin-top:0;}
+  h2{font-size:1.5rem;color:var(--accent);margin-top:2em;
+     border-bottom:1px solid var(--border);padding-bottom:6px;}
+  h3{font-size:1.15rem;color:var(--accent);margin-top:1.6em;}
+  a{color:#0969da;}
+  code{background:var(--code-bg);border-radius:4px;padding:2px 5px;
+       font-family:Consolas,'Courier New',monospace;font-size:.92em;}
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+      padding:14px;overflow-x:auto;font-family:Consolas,'Courier New',monospace;
+      font-size:.9rem;}
+  pre code{background:none;padding:0;}
+  table{border-collapse:collapse;width:100%;margin:1.2em 0;font-size:.95rem;}
+  th,td{border:1px solid var(--border);padding:8px 12px;text-align:left;}
+  th{background:var(--accent);color:#fff;font-weight:600;}
+  tr:nth-child(even) td{background:#f6f8fa;}
+  blockquote{border-left:4px solid var(--accent2);margin:1.2em 0;padding:8px 16px;
+             background:#f0faf7;color:#14433a;border-radius:0 6px 6px 0;}
+  blockquote p{margin:4px 0;}
+  img{max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;margin:12px 0;}
+  hr{border:none;border-top:1px solid var(--border);margin:2em 0;}
+  .toc{background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+       padding:14px 20px;}
+  .toc ul{list-style:none;padding-left:0;margin:0;}
+  .toc li{padding:3px 0;}
+  .toc a{text-decoration:none;}
+  @media print{body{background:#fff;}.page{box-shadow:none;padding:16px;}}
+</style>
+</head>
+<body>
+<div class="page">
+<h1 id="catastrophic-forgetting-lab-experiment-report">Catastrophic Forgetting Lab — Experiment Report</h1>
+<p><strong>An end-to-end account of what we did, what the experiments showed, and what we
+learned</strong> — from raw curiosity about why LLMs forget, to a working, reproducible
+experiment platform with measurable results.</p>
+<ul>
+<li>Repo: https://github.com/Pratyush-Mohanty/catastrophic-forgetting-lab</li>
+<li>Code: <code>cf_lab/</code> package · Dashboard: <code>app/dashboard.py</code> · Results: <code>experiments/*.json</code></li>
+<li>Date: August 2026 · Hardware: laptop, <strong>CPU-only</strong> (NVIDIA MX150, unsupported CUDA)</li>
+</ul>
+<hr />
+<h2 id="1-what-we-set-out-to-do">1. What we set out to do</h2>
+<p>We kept reading that large language models "forget" old knowledge after
+fine-tuning. Every explanation was abstract — curves in papers, claims without a
+demo. So we decided to <strong>build it from scratch</strong> to watch it happen, measure it,
+and test the standard defenses.</p>
+<h3 id="the-question">The question</h3>
+<blockquote>
+<p>Fine-tune one transformer on Task A, then Task B, then Task C — how much of
+Task A's accuracy is destroyed? And can EWC or Experience Replay prevent it?</p>
+</blockquote>
+<h3 id="the-experiment-design">The experiment design</h3>
+<p>Task-incremental continual learning with a <strong>shared encoder + one head per task</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Task</th>
+<th>Dataset</th>
+<th>Classes</th>
+<th>Skill</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>IMDb</td>
+<td><code>stanfordnlp/imdb</code></td>
+<td>2</td>
+<td>Sentiment analysis</td>
+</tr>
+<tr>
+<td>2</td>
+<td>AG News</td>
+<td><code>fancyzhx/ag_news</code></td>
+<td>4</td>
+<td>News topic classification</td>
+</tr>
+<tr>
+<td>3</td>
+<td>DBpedia</td>
+<td><code>fancyzhx/dbpedia_14</code></td>
+<td>14</td>
+<td>Entity ontology typing</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Model:</strong> <code>google/bert_uncased_L-4_H-256_A-4</code> (~11M params — chosen so a full
+  run finishes in ~11–13 min on CPU).</li>
+<li><strong>Settings:</strong> 1000 train / 400 eval samples per task, 2 epochs, batch 32, LR 1e-4.</li>
+<li><strong>Protocol:</strong> after every phase, evaluate <strong>all</strong> tasks with their own heads.</li>
+<li><strong>Real-world framing:</strong> one company model sequentially fine-tuned for three
+  products (sentiment analytics → news categorization → knowledge-base typing).</li>
+</ul>
+<h3 id="the-three-strategies-compared">The three strategies compared</h3>
+<ol>
+<li><strong>Baseline</strong> — plain sequential fine-tuning. No memory, no protection.</li>
+<li><strong>EWC</strong> (Elastic Weight Consolidation, Kirkpatrick et al. 2017) — after each
+   task, compute the diagonal <strong>Fisher information</strong> per weight, then add a penalty
+   <code>½·λ·Σᵢ Fᵢ·(θᵢ−θ_Aᵢ)²</code> during later training to anchor the important weights.
+   λ = 500.</li>
+<li><strong>Experience Replay</strong> — keep a memory buffer (300 examples) of old tasks and
+   mix them into every batch (50% old, 50% new), each example routed to its own
+   task's head.</li>
+</ol>
+<hr />
+<h2 id="2-what-we-built-end-to-end">2. What we built (end to end)</h2>
+<pre><code>catastrophic-forgetting-lab/
+├── cf_lab/                # core package
+│   ├── config.py          # tasks, hyperparameters, hardware detection
+│   ├── data.py            # load / shuffle / subsample / tokenize datasets
+│   ├── model.py           # ContinualClassifier (shared encoder + per-task heads), compute_fisher
+│   ├── training.py        # fine_tune_phase, EWC penalty, ReplayBuffer, _mix_replay
+│   ├── experiment.py      # phase orchestration + step logging
+│   ├── metrics.py         # retention, forgetting, confusion matrices
+│   ├── plotting.py        # learning-curve &amp; heatmap plots
+│   ├── results.py         # JSON persistence + reloading
+│   └── run.py             # CLI entry point
+├── app/dashboard.py       # Streamlit dashboard (run / compare / theory / saved results)
+├── experiments/           # 3 saved JSON results
+├── docs/images/           # report figures
+├── generate_images.py     # regenerate figures from results
+└── run_dashboard.bat      # one-click launcher (venv-safe)
+</code></pre>
+<p>We deliberately wrote the training loop ourselves (no continual-learning
+framework) so every moving part — Fisher estimation, replay mixing, multi-head
+routing — is visible and debuggable.</p>
+<hr />
+<h2 id="3-what-the-experiments-showed">3. What the experiments showed</h2>
+<p>All runs used identical settings (see §1). Accuracy on each task is measured
+after every training phase.</p>
+<h3 id="31-accuracy-matrix-row-trained-on-column-evaluated">3.1 Accuracy matrix (row = trained on, column = evaluated)</h3>
+<p><strong>Baseline</strong> — the older the task, the more it decays:</p>
+<table>
+<thead>
+<tr>
+<th>Trained on \ Evaluated</th>
+<th>IMDb</th>
+<th>AG News</th>
+<th>DBpedia</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IMDb</td>
+<td><strong>0.647</strong></td>
+<td>0.270</td>
+<td>0.013</td>
+</tr>
+<tr>
+<td>AG News</td>
+<td>0.627</td>
+<td><strong>0.805</strong></td>
+<td>0.050</td>
+</tr>
+<tr>
+<td>DBpedia</td>
+<td>0.600</td>
+<td>0.810</td>
+<td><strong>0.905</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>EWC</strong> — the decay is largely suppressed:</p>
+<table>
+<thead>
+<tr>
+<th>Trained on \ Evaluated</th>
+<th>IMDb</th>
+<th>AG News</th>
+<th>DBpedia</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IMDb</td>
+<td><strong>0.647</strong></td>
+<td>0.273</td>
+<td>0.013</td>
+</tr>
+<tr>
+<td>AG News</td>
+<td>0.637</td>
+<td><strong>0.820</strong></td>
+<td>0.048</td>
+</tr>
+<tr>
+<td>DBpedia</td>
+<td>0.630</td>
+<td>0.818</td>
+<td><strong>0.902</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Replay</strong> — nothing is lost, and task 1 even improves:</p>
+<table>
+<thead>
+<tr>
+<th>Trained on \ Evaluated</th>
+<th>IMDb</th>
+<th>AG News</th>
+<th>DBpedia</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IMDb</td>
+<td><strong>0.647</strong></td>
+<td>0.273</td>
+<td>0.013</td>
+</tr>
+<tr>
+<td>AG News</td>
+<td>0.703</td>
+<td><strong>0.790</strong></td>
+<td>0.083</td>
+</tr>
+<tr>
+<td>DBpedia</td>
+<td>0.725</td>
+<td>0.802</td>
+<td><strong>0.812</strong></td>
+</tr>
+</tbody>
+</table>
+<p><img alt="confusion matrices" src="docs/images/confusion_matrices.png" /></p>
+<h3 id="32-retention-summary-final-accuracy-peak-accuracy-100-nothing-forgotten">3.2 Retention summary (final accuracy ÷ peak accuracy; 1.00 = nothing forgotten)</h3>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>IMDb</th>
+<th>AG News</th>
+<th>DBpedia</th>
+<th>Runtime</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Baseline</td>
+<td><strong>0.93</strong></td>
+<td>0.98</td>
+<td>1.00</td>
+<td>678 s</td>
+</tr>
+<tr>
+<td>EWC</td>
+<td><strong>0.97</strong></td>
+<td>0.98</td>
+<td>1.00</td>
+<td>802 s</td>
+</tr>
+<tr>
+<td>Replay</td>
+<td><strong>1.00</strong></td>
+<td>1.00</td>
+<td>1.00</td>
+<td>790 s</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="retention comparison" src="docs/images/retention_comparison.png" /></p>
+<h3 id="33-the-numbers-that-matter">3.3 The numbers that matter</h3>
+<ul>
+<li><strong>Baseline</strong> lost <strong>4.8 accuracy points</strong> on IMDb (0.647 → 0.600), a ~7%
+  retention drop — measurable, reproducible catastrophic forgetting.</li>
+<li><strong>EWC</strong> cut that loss to <strong>1.8 points</strong> (0.647 → 0.630) using <strong>zero extra data</strong>,
+  at a ~18% runtime cost.</li>
+<li><strong>Replay</strong> not only preserved IMDb (0.647 → <strong>0.725</strong>) but <em>improved</em> it, at a
+  ~16% runtime cost — with one trade-off: the newest task scored slightly lower
+  (DBpedia 0.812 vs baseline 0.905) because half of each batch is replayed old data.</li>
+</ul>
+<h3 id="34-learning-curves">3.4 Learning curves</h3>
+<p><img alt="baseline curves" src="docs/images/curves_baseline.png" />
+<img alt="ewc curves" src="docs/images/curves_ewc.png" />
+<img alt="replay curves" src="docs/images/curves_replay.png" /></p>
+<p>Watch the older-task lines slope downward in the baseline; EWC holds them flatter;
+replay holds them essentially flat.</p>
+<p><img alt="task1 across strategies" src="docs/images/task1_across_strategies.png" /></p>
+<hr />
+<h2 id="4-what-we-achieved">4. What we achieved</h2>
+<ol>
+<li><strong>Made catastrophic forgetting visible and measurable</strong> in a real transformer,
+   on a laptop CPU, in ~12 minutes per run.</li>
+<li><strong>Demonstrated both classic defenses work:</strong> EWC recovers most of the loss with
+   no extra data; replay eliminates it entirely.</li>
+<li><strong>Showed a practical trade-off:</strong> replay spends "training budget" on old data,
+   so the <em>newest</em> task gains less — a real engineering consideration.</li>
+<li><strong>Delivered a reusable platform:</strong> CLI, Streamlit dashboard (with pre-loaded
+   results), JSON persistence, plotting, and an article-grade figure pipeline.</li>
+<li><strong>Documented the journey</strong> end to end — README, this report, and a Medium
+   article (<code>MEDIUM.md</code>) with reproducible results.</li>
+</ol>
+<hr />
+<h2 id="5-learning-points">5. Learning points</h2>
+<h3 id="on-catastrophic-forgetting-itself">On catastrophic forgetting itself</h3>
+<ul>
+<li><strong>Forgetting needs conflicting tasks.</strong> Our first attempt (IMDb → SST-2 →
+  Amazon, all sentiment) showed <em>no</em> forgetting — the tasks were the same skill
+  with different data, so training B <em>helped</em> A. Catastrophic forgetting is an
+  interference phenomenon, not an inevitability.</li>
+<li><strong>It compounds with task order.</strong> The older the task, the more it decays —
+  every subsequent phase overwrites the shared weights that earlier heads depend on.</li>
+<li><strong>Peak ≠ final.</strong> Evaluating "the model after the last phase" is the honest
+  metric; evaluating right after training a task flatters it.</li>
+</ul>
+<h3 id="on-the-mitigation-strategies">On the mitigation strategies</h3>
+<ul>
+<li><strong>EWC is data-free but hyperparameter-sensitive.</strong> The penalty strength λ is a
+  real dial: too small → forgetting returns; too large → the model stops learning
+  the new task. (We used λ = 500.)</li>
+<li><strong>Replay is simple and strong but costs capacity.</strong> It preserved <em>and improved</em>
+  old tasks, but the newest task scored lower because half of every batch is old
+  data. In a real product rollout, that is a direct business trade-off.</li>
+<li><strong>Frameworks ≠ magic.</strong> Replay and EWC are ~60 lines of honest PyTorch; you do
+  not need a continual-learning library to run serious experiments.</li>
+</ul>
+<h3 id="on-engineering-pitfalls-the-bugs-that-taught-us-the-most">On engineering pitfalls (the bugs that taught us the most)</h3>
+<ul>
+<li><strong>HuggingFace <code>imdb</code> is sorted by label.</strong> Taking the first N examples gives a
+  degenerate single-class subset — our first "model" learned to always predict 0.
+  Fix: <strong>shuffle before subsampling</strong> (now in <code>data.py</code>).</li>
+<li><strong>Correct Fisher estimation needs per-sample gradients computed <em>outside</em>
+  <code>torch.no_grad()</code></strong> — the square of a sum is not the sum of squares. Doing it
+  inside <code>no_grad</code> silently produces a wrong (near-zero) penalty.</li>
+<li><strong><code>datasets</code> v5 changed its API.</strong> IDs are namespaced (<code>fancyzhx/dbpedia_14</code>,
+  not <code>dbpedia_14</code>), <code>trust_remote_code</code> no longer exists, and Amazon/DBpedia use a
+  <code>content</code> column, not <code>text</code>. Old tutorials quietly break.</li>
+<li><strong>Multi-head replay breaks without head routing.</strong> Replay batches contain
+  examples from several tasks; each row needs its own <code>head_index</code>, and other
+  tasks' logit columns must be padded with <code>-inf</code> so the loss ignores them.</li>
+<li><strong>Match the model to the machine.</strong> <code>distilbert-base-uncased</code> is ~5 s/step on
+  CPU; the L-4 H-256 BERT is ~0.85 s/step — a 6× difference that decides whether
+  you can iterate at all. Right-sizing the model <em>is</em> an experiment design choice.</li>
+<li><strong>Environment discipline matters.</strong> The dashboard crashed with a cryptic
+  Streamlit error when launched with the wrong (system) Python that lacked the ML
+  stack. Fix: a venv launcher (<code>run_dashboard.bat</code>) and a friendly preflight check
+  in the app.</li>
+</ul>
+<h3 id="on-process">On process</h3>
+<ul>
+<li><strong>Reproducible runs beat big runs.</strong> Fixed seeds, saved JSON per run, and a
+  results loader let us compare strategies hours apart and re-plot without rerunning.</li>
+<li><strong>Start tiny, then scale.</strong> Validating the whole pipeline at 200 samples (one
+  fast run) before the full 1000-sample runs caught most bugs in ~3 minutes instead
+  of ~1 hour.</li>
+</ul>
+<hr />
+<h2 id="6-reproduce-it-yourself">6. Reproduce it yourself</h2>
+<pre><code class="language-bash">git clone https://github.com/Pratyush-Mohanty/catastrophic-forgetting-lab.git
+cd catastrophic-forgetting-lab
+py -3.10 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+
+# interactive dashboard (pre-loaded results)
+run_dashboard.bat          # or: .venv\Scripts\python -m streamlit run app/dashboard.py
+
+# CLI
+.venv\Scripts\python -m cf_lab.run --mitigation baseline --plot
+.venv\Scripts\python -m cf_lab.run --mitigation ewc --samples 1000 --epochs 2
+.venv\Scripts\python -m cf_lab.run --mitigation replay --samples 1000 --epochs 2
+</code></pre>
+<p>Saved results live in <code>experiments/</code> and the dashboard's <em>Compare strategies</em> tab
+loads them automatically.</p>
+<h2 id="7-next-steps">7. Next steps</h2>
+<ul>
+<li>Longer task chains (5–8 tasks) — forgetting should compound further.</li>
+<li>More mitigations: Learning Without Forgetting (LWF), LoRA adapters, GEM/AGEM.</li>
+<li>Larger encoders on GPU (<code>distilbert</code>, <code>bert-base</code>).</li>
+<li>A deployment-style regression test: evaluate the <em>final</em> model against all
+  earlier product benchmarks, as a real MLOps platform would.</li>
+</ul>
+</div>
+</body>
+</html>
